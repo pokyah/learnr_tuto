@@ -32,6 +32,26 @@ presented by *Thomas Goossens*
 `r fontawesome::fa("github", height = "50px", fill = "#75aadb")`
 `r fontawesome::fa("envelope", height = "50px", fill = "#75aadb")`
 
+## Project
+
+> A very short introduction to the project
+
+### What? 
+
+`r fontawesome::fa("bullseye", height = "50px", fill = "#75aadb")`
+Providing __hourly__ gridded weather data @ __1km² resolution__ for Wallonia
+
+### Why? 
+
+`r fontawesome::fa("leaf", height = "50px", fill = "#75aadb")`
+
+Feeding decision tools for agricultural warning systems based on crop monitoring models ([EU directive for Sustainable use of pesticides](https://ec.europa.eu/food/plant/pesticides/sustainable_use_pesticides_en))
+
+### How? 
+
+`r fontawesome::fa("th", height = "50px", fill = "#75aadb")`
+__spatializing__ data from [PAMESEB](https://www.pameseb.be/) Automatic Weather Station Network
+
 ## API DATA
 ```{r setup, include=FALSE}
 library(learnr)
