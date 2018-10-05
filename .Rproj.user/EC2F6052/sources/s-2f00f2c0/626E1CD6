@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1538751475348.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "285225938",
+    "id" : "626E1CD6",
+    "lastKnownWriteTime" : 1538751481,
+    "last_content_update" : 1538751481389,
+    "path" : "~/Documents/code/pokyah/tuto/tuto.Rmd",
+    "project_path" : "tuto.Rmd",
+    "properties" : {
+        "cursorPosition" : "15,0",
+        "scrollLine" : "0",
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}
