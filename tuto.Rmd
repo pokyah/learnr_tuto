@@ -1,12 +1,46 @@
 ---
-title: "spagrometeoR!"
-output: learnr::tutorial
+title: "spagrometeoR"
+output:
+  learnr::tutorial:
+    progressive: true
+    allow_skip: true
 runtime: shiny_prerendered
 ---
 
+<style>
+.tutorial-exercise-output pre{
+    color:#43d615;
+    background-color:black;
+    border-radius: 10px;
+    padding: 20px;}
+}
+
+.ace_editor{
+    font-size:16px !important;
+}
+</style>
+
+## Welcome ! 
+
+Welcome to this Session! 
+
+> Why and How to use R as an opensource GIS
+
+presented by *Thomas Goossens*
+
+`r fontawesome::fa("linkedin", height = "50px", fill = "#75aadb")`
+`r fontawesome::fa("github", height = "50px", fill = "#75aadb")`
+`r fontawesome::fa("envelope", height = "50px", fill = "#75aadb")`
+
+## API DATA
 ```{r setup, include=FALSE}
 library(learnr)
 library(dplyr)
+library(raster)
+library(sf)
+library(fontawesome)
+library(leaflet)
+
 rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
 rawdata = agrometAPI::type_data(rawdata)
 mydataset = rawdata %>%
@@ -16,7 +50,116 @@ mydataset = rawdata %>%
   dplyr::filter(!is.na(to)) %>%
   dplyr::filter(poste != "China") %>%
   dplyr::filter(!type_name %in% c("PS2000","PESSL","BODATA","Sencrop","netdl1000","SYNOP")) %>%
-  dplyr::select(c(sid, poste, longitude, latitude, mtime, tsa)) 
+  dplyr::select(c(sid, poste, longitude, latitude, mtime, tsa))
+
+# declaration of the function to build a DEM using
+build.DEM <- function(country) {
+  # Get the Belgium DEM using raster package
+  elevation = raster::getData("alt", country = country, mask = TRUE)
+  # compute the slope from the elevation
+  #slope <- raster::terrain(elevation, opt="slope", unit="degrees")
+  # compute the aspect from the elevation
+  #aspect <- raster::terrain(elevation, opt="aspect", unit="degrees")
+  # stack the rasters
+  #topo <- stack(elevation, slope, aspect)
+  # Return the stack of rasters
+  return(elevation)
+} 
+# pass country ISO code to build its (low res) DEM and store the raster stack in the bel.DEM var
+bel.DEM = build.DEM("BE")
+plot(bel.DEM)
+
+raster.crs = raster::crs(bel.DEM ,asText = TRUE)
+raster.crs
+
+mydataset = sf::st_as_sf(mydataset, 
+  coords = c("longitude", "latitude"),
+  crs = 4326)
+
+mydataset = sf::st_transform(mydataset, crs = raster.crs)
+sf::st_crs(mydataset)
+
+# downloading admin boundaries of Wallonia
+boundary = raster::getData("GADM", country = "BE", level = 2)
+# coercing to sf class for easier data manipulation
+boundary = sf::st_as_sf(boundary)
+# extract Wallonia
+wallonia = boundary %>% dplyr::filter(NAME_1 == "Wallonie")
+# croping (masking)
+wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
+plot(wal.DEM)
+
+# projected for resolution
+wallonia.proj = st_transform(wallonia, crs = 3812)
+# tranform to .sp class
+wallonia.sp = as(wallonia.proj, "Spatial")
+# Make a rectangular grid over your SpatialPolygonsDataFrame
+ grid.sp = sp::makegrid(x = wallonia.sp, cellsize = 5000,
+    pretty = TRUE)
+# Convert the grid to SpatialPoints and subset these points by the polygon.
+ grid.pts <- sp::SpatialPoints(coords = grid.sp, 
+                         proj4string = sp::CRS(proj4string(wallonia.sp)))
+# find all points in `grd.pts` that fall within `wallonia`
+ grid.pts.in <- grid.pts[wallonia.sp, ]
+# transfomm to grid
+ sp::gridded(grid.pts.in) = TRUE
+# convert to sf
+ grid = sf::st_as_sf(grid.pts.in)
+# reproject to EPSG = 4326
+ grid = sf::st_transform(grid, crs = st_crs(wallonia))
+# plot the grid
+ plot(grid)
+ 
+ elevation.pal <- colorNumeric(reverse = TRUE, "RdYlGn", values(wal.DEM$BEL_msk_alt),
+  na.color = "transparent")
+temperature.pal <- colorNumeric(reverse = TRUE, "RdBu", domain=mydataset$tsa,
+  na.color = "transparent")
+responsiveness = "\'<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\'"
+
+map =  leaflet() %>% 
+     addProviderTiles(
+         providers$OpenStreetMap.BlackAndWhite, group = "B&W") %>%
+     addProviderTiles(
+         providers$Esri.WorldImagery, group = "Satelitte") %>%
+     addRasterImage(
+         wal.DEM, group = "Elevation", colors = elevation.pal, opacity = 0.8) %>%
+     addPolygons(
+         data = wallonia, group = "Admin", color = "#444444", weight = 1, smoothFactor = 0.5,
+         opacity = 1, fillOpacity = 0.1, fillColor = "grey",
+         highlightOptions = highlightOptions(color = "white", weight = 2,
+             bringToFront = FALSE),
+         popup = ~htmltools::htmlEscape(as.character(NAME_2))) %>%
+     addCircleMarkers(
+         data = mydataset,
+         group = "Stations",
+         color = ~temperature.pal(tsa),
+         stroke = FALSE,
+        fillOpacity = 0.8,
+         label = ~htmltools::htmlEscape(as.character(tsa))) %>%
+    addCircleMarkers(
+        data = grid,
+        group = "Grid",
+        radius = 2,
+        color = "grey",
+        stroke = FALSE, fillOpacity = 1) %>%
+    addLegend(
+      values = values(wal.DEM), group = "Elevation",
+      position = "bottomright", pal = elevation.pal,
+      title = "Elevation (m)") %>%
+     addLayersControl(
+         baseGroups = c("B&W", "Satelitte"),
+         overlayGroups = c("Elevation", "Admin", "Stations", "Grid"),
+         options = layersControlOptions(collapsed = TRUE)
+     ) %>%
+     hideGroup(c("Slope", "Aspect")) %>%
+     addEasyButton(easyButton(
+         icon = "fa-crosshairs", title = "Locate Me",
+         onClick = JS("function(btn, map){ map.locate({setView: true}); }"))) %>%
+     htmlwidgets::onRender(paste0("
+       function(el, x) {
+       $('head').append(",responsiveness,");
+       }"))
+map
 ```
 
 This code computes the answer to one plus one, change it so it computes two plus two:
@@ -25,21 +168,24 @@ This code computes the answer to one plus one, change it so it computes two plus
 1 + 1
 ```
 
-install R package for agromet API
+### install R package for agromet API
+ins
 
 ```{r installAPI, exercise=TRUE}
 devtools::install_github("pokyah/agrometAPI", ref = "master", force=TRUE)
 ```
 
-Call the agromet API
+###  Call the agromet API
+ins
 
 ```{r agrometAPIcall, exercise=TRUE}
 rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
 rawdata = agrometAPI::type_data(rawdata)
 ```
 
-filter & preview
-```{r filter, exercise=TRUE, exercise.setup = "agrometAPI"}
+###  filter & preview
+ins
+```{r filter, exercise=TRUE}
 library(dplyr)
 mydataset = rawdata %>%
   dplyr::filter(!is.na(mtime)) %>%
@@ -53,3 +199,141 @@ mydataset = rawdata %>%
 mydataset
 ```
 
+## DEM
+
+### Downloading
+```{r DEMraster, exercise=TRUE}
+# loading the raster package
+library(raster)
+# declaration of the function to build a DEM using
+build.DEM <- function(country) {
+  # Get the Belgium DEM using raster package
+  elevation = raster::getData("alt", country = country, mask = TRUE)
+  # compute the slope from the elevation
+  #slope <- raster::terrain(elevation, opt="slope", unit="degrees")
+  # compute the aspect from the elevation
+  #aspect <- raster::terrain(elevation, opt="aspect", unit="degrees")
+  # stack the rasters
+  #topo <- stack(elevation, slope, aspect)
+  # Return the stack of rasters
+  return(elevation)
+} 
+# pass country ISO code to build its (low res) DEM and store the raster stack in the bel.DEM var
+bel.DEM = build.DEM("BE")
+plot(bel.DEM)
+```
+
+### reprojecting
+```{r DEMCRS, exercise = TRUE}
+raster.crs = raster::crs(bel.DEM ,asText = TRUE)
+raster.crs
+
+mydataset = sf::st_as_sf(mydataset, 
+  coords = c("longitude", "latitude"),
+  crs = 4326)
+
+mydataset = sf::st_transform(mydataset, crs = raster.crs)
+sf::st_crs(mydataset)
+```
+
+### Croping  `r fa("crop")` 
+Masking the DEM raster with the extent of Wallonia
+
+```{r DEMcrop, exercise = TRUE}
+# downloading admin boundaries of Wallonia
+boundary = raster::getData("GADM", country = "BE", level = 2)
+# coercing to sf class for easier data manipulation
+boundary = sf::st_as_sf(boundary)
+# extract Wallonia
+wallonia = boundary %>% dplyr::filter(NAME_1 == "Wallonie")
+# croping (masking)
+wal.DEM = raster::mask(bel.DEM, as(wallonia, "Spatial") )
+plot(wal.DEM)
+```
+
+## GRID 
+`r fa("grip-horizontal")` 
+* inspired from [`r fa("stack-overflow")`](https://stackoverflow.com/questions/43436466/create-grid-in-r-for-kriging-in-gstat/43444232)
+* requires the good old `sp` library
+
+### Let's build it from scratch !
+```{r grid, exercise = TRUE}
+# projected for resolution
+wallonia.proj = st_transform(wallonia, crs = 3812)
+# tranform to .sp class
+wallonia.sp = as(wallonia.proj, "Spatial")
+# Make a rectangular grid over your SpatialPolygonsDataFrame
+ grid.sp = sp::makegrid(x = wallonia.sp, cellsize = 5000,
+    pretty = TRUE)
+# Convert the grid to SpatialPoints and subset these points by the polygon.
+ grid.pts <- sp::SpatialPoints(coords = grid.sp, 
+                         proj4string = sp::CRS(proj4string(wallonia.sp)))
+# find all points in `grd.pts` that fall within `wallonia`
+ grid.pts.in <- grid.pts[wallonia.sp, ]
+# transfomm to grid
+ sp::gridded(grid.pts.in) = TRUE
+# convert to sf
+ grid = sf::st_as_sf(grid.pts.in)
+# reproject to EPSG = 4326
+ grid = sf::st_transform(grid, crs = st_crs(wallonia))
+# plot the grid
+ plot(grid)
+```
+
+## Map
+
+>  make our spatial data intelligible by mapping it using `leaflet`
+
+### Leaflet map
+```{r, map, exercise = TRUE}
+elevation.pal <- colorNumeric(reverse = TRUE, "RdYlGn", values(wal.DEM$BEL_msk_alt),
+  na.color = "transparent")
+temperature.pal <- colorNumeric(reverse = TRUE, "RdBu", domain=mydataset$tsa,
+  na.color = "transparent")
+responsiveness = "\'<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\'"
+
+map =  leaflet() %>% 
+     addProviderTiles(
+         providers$OpenStreetMap.BlackAndWhite, group = "B&W") %>%
+     addProviderTiles(
+         providers$Esri.WorldImagery, group = "Satelitte") %>%
+     addRasterImage(
+         wal.DEM, group = "Elevation", colors = elevation.pal, opacity = 0.8) %>%
+     addPolygons(
+         data = wallonia, group = "Admin", color = "#444444", weight = 1, smoothFactor = 0.5,
+         opacity = 1, fillOpacity = 0.1, fillColor = "grey",
+         highlightOptions = highlightOptions(color = "white", weight = 2,
+             bringToFront = FALSE),
+         popup = ~htmltools::htmlEscape(as.character(NAME_2))) %>%
+     addCircleMarkers(
+         data = mydataset,
+         group = "Stations",
+         color = ~temperature.pal(tsa),
+         stroke = FALSE,
+        fillOpacity = 0.8,
+         label = ~htmltools::htmlEscape(as.character(tsa))) %>%
+    addCircleMarkers(
+        data = grid,
+        group = "Grid",
+        radius = 2,
+        color = "grey",
+        stroke = FALSE, fillOpacity = 1) %>%
+    addLegend(
+      values = values(wal.DEM), group = "Elevation",
+      position = "bottomright", pal = elevation.pal,
+      title = "Elevation (m)") %>%
+     addLayersControl(
+         baseGroups = c("B&W", "Satelitte"),
+         overlayGroups = c("Elevation", "Admin", "Stations", "Grid"),
+         options = layersControlOptions(collapsed = TRUE)
+     ) %>%
+     hideGroup(c("Slope", "Aspect")) %>%
+     addEasyButton(easyButton(
+         icon = "fa-crosshairs", title = "Locate Me",
+         onClick = JS("function(btn, map){ map.locate({setView: true}); }"))) %>%
+     htmlwidgets::onRender(paste0("
+       function(el, x) {
+       $('head').append(",responsiveness,");
+       }"))
+map
+```
