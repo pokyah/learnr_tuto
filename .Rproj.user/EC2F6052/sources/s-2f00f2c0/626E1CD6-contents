@@ -1,11 +1,22 @@
 ---
-title: "Hello, Tutorial!"
+title: "spagrometeoR!"
 output: learnr::tutorial
 runtime: shiny_prerendered
 ---
 
 ```{r setup, include=FALSE}
 library(learnr)
+library(dplyr)
+rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
+rawdata = agrometAPI::type_data(rawdata)
+mydataset = rawdata %>%
+  dplyr::filter(!is.na(mtime)) %>%
+  dplyr::filter(sid != 38 & sid != 41) %>%
+  dplyr::filter(!is.na(from)) %>%
+  dplyr::filter(!is.na(to)) %>%
+  dplyr::filter(poste != "China") %>%
+  dplyr::filter(!type_name %in% c("PS2000","PESSL","BODATA","Sencrop","netdl1000","SYNOP")) %>%
+  dplyr::select(c(sid, poste, longitude, latitude, mtime, tsa)) 
 ```
 
 This code computes the answer to one plus one, change it so it computes two plus two:
@@ -13,3 +24,32 @@ This code computes the answer to one plus one, change it so it computes two plus
 ```{r addition, exercise=TRUE}
 1 + 1
 ```
+
+install R package for agromet API
+
+```{r installAPI, exercise=TRUE}
+devtools::install_github("pokyah/agrometAPI", ref = "master", force=TRUE)
+```
+
+Call the agromet API
+
+```{r agrometAPIcall, exercise=TRUE}
+rawdata = agrometAPI::get_data(dfrom = (Sys.Date() - 1))
+rawdata = agrometAPI::type_data(rawdata)
+```
+
+filter & preview
+```{r filter, exercise=TRUE, exercise.setup = "agrometAPI"}
+library(dplyr)
+mydataset = rawdata %>%
+  dplyr::filter(!is.na(mtime)) %>%
+  dplyr::filter(sid != 38 & sid != 41) %>%
+  dplyr::filter(!is.na(from)) %>%
+  dplyr::filter(!is.na(to)) %>%
+  dplyr::filter(poste != "China") %>%
+  dplyr::filter(!type_name %in% c("PS2000","PESSL","BODATA","Sencrop","netdl1000","SYNOP")) %>%
+  dplyr::select(c(sid, poste, longitude, latitude, mtime, tsa))
+
+mydataset
+```
+
